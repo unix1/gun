@@ -37,7 +37,7 @@
 	buffer = <<>> :: binary(),
 	streams = [] :: [{reference(), boolean()}], %% ref + whether stream is alive
 	in = head :: io(),
-	in_state :: {non_neg_integer(), non_neg_integer()},
+	in_state :: undefined | {non_neg_integer(), non_neg_integer()},
 	out = head :: io()
 }).
 
@@ -118,6 +118,8 @@ handle(Data, State=#http_state{in={body, Length}, connection=Conn}) ->
 			end
 	end.
 
+handle_head(Data, State=#http_state{streams=[]}) ->
+	handle_head(Data, State#http_state{streams=[{undefined, false}]});
 handle_head(Data, State=#http_state{owner=Owner, version=ClientVersion,
 		connection=Conn, streams=[{StreamRef, IsAlive}|_]}) ->
 	{Version, Status, _, Rest} = cow_http:parse_status_line(Data),

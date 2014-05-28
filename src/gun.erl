@@ -91,6 +91,7 @@
 	host :: inet:hostname(),
 	port :: inet:port_number(),
 	keepalive :: pos_integer(),
+	keepalive_scheduled :: boolean(),
 	type :: conn_type(),
 	retry :: non_neg_integer(),
 	retry_timeout :: pos_integer(),
@@ -440,9 +441,11 @@ retry_loop(State=#state{parent=Parent, retry_timeout=RetryTimeout}, Retries) ->
 				{retry_loop, State, Retries})
 	end.
 
+before_loop(State=#state{keepalive_scheduled=true}) ->
+	loop(State);
 before_loop(State=#state{keepalive=Keepalive}) ->
 	_ = erlang:send_after(Keepalive, self(), keepalive),
-	loop(State).
+	loop(State#state{keepalive_scheduled=true}).
 
 loop(State=#state{parent=Parent, owner=Owner, host=Host,
 		retry=Retry, socket=Socket, transport=Transport,
@@ -471,7 +474,7 @@ loop(State=#state{parent=Parent, owner=Owner, host=Host,
 				protocol=undefined}, Retry);
 		keepalive ->
 			ProtoState2 = Protocol:keepalive(ProtoState),
-			before_loop(State#state{protocol_state=ProtoState2});
+			before_loop(State#state{protocol_state=ProtoState2, keepalive_scheduled=false});
 		{request, Owner, StreamRef, Method, Path, Headers} ->
 			ProtoState2 = Protocol:request(ProtoState,
 				StreamRef, Method, Host, Path, Headers),
