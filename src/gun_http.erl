@@ -125,7 +125,7 @@ handle_head(Data, State=#http_state{owner=Owner, version=ClientVersion,
 		connection=Conn, streams=[{StreamRef, IsAlive}|_]}) ->
 	{Version, Status, _, Rest} = cow_http:parse_status_line(Data),
 	{Headers, Rest2} = cow_http:parse_headers(Rest),
-	In = io_from_headers(Version, Headers),
+	In = io_from_headers(in, Version, Headers),
 	IsFin = case In of head -> fin; _ -> nofin end,
 	case IsAlive of
 		false ->
@@ -193,7 +193,7 @@ request(State=#http_state{socket=Socket, transport=Transport, version=Version,
 	end,
 	%% We use Headers2 because this is the smallest list.
 	Conn = conn_from_headers(Headers2),
-	Out = io_from_headers(Version, Headers2),
+	Out = io_from_headers(out, Version, Headers2),
 	Transport:send(Socket, cow_http:request(Method, Path, Version, Headers3)),
 	new_stream(State#http_state{connection=Conn, out=Out}, StreamRef).
 
@@ -290,7 +290,26 @@ conn_from_headers(Headers) ->
 			end
 	end.
 
-io_from_headers(Version, Headers) ->
+io_from_headers(in, Version, Headers) ->
+	case lists:keyfind(<<"content-length">>, 1, Headers) of
+		{_, <<"0">>} ->
+			head;
+		{_, Length} ->
+			{body, cow_http_hd:parse_content_length(Length)};
+		_ when Version =:= 'HTTP/1.0' ->
+			body_close;
+		_ ->
+			case lists:keyfind(<<"transfer-encoding">>, 1, Headers) of
+				false ->
+					body_close;
+				{_, TE} ->
+					case cow_http_hd:parse_transfer_encoding(TE) of
+						[<<"chunked">>] -> body_chunked;
+						[<<"identity">>] -> body_close
+					end
+			end
+	end;
+io_from_headers(out, Version, Headers) ->
 	case lists:keyfind(<<"content-length">>, 1, Headers) of
 		{_, <<"0">>} ->
 			head;
